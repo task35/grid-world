@@ -116,17 +116,17 @@ namespace Task35
 			return new long[] { sw.ElapsedMilliseconds, trials };
 		}
 
-		public long[] JumpMapLookupTest1 (Arcadia.JumpMap jm, object key)
-		{
-			Arcadia.JumpMap.KeyVal kv = jm.Subscribe(key);
-			var sw = new Stopwatch();
-			sw.Start();
-			for (int i = 0; i < trials; i++) {
-				kv.GetVal();
-			}
-			sw.Stop();
-			return new long[] { sw.ElapsedMilliseconds, trials };
-		}
+		//public long[] JumpMapLookupTest1 (Arcadia.JumpMap jm, object key)
+		//{
+		//	Arcadia.JumpMap.KeyVal kv = jm.Subscribe(key);
+		//	var sw = new Stopwatch();
+		//	sw.Start();
+		//	for (int i = 0; i < trials; i++) {
+		//		kv.GetVal();
+		//	}
+		//	sw.Stop();
+		//	return new long[] { sw.ElapsedMilliseconds, trials };
+		//}
 				
 	}
 }
