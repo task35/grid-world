@@ -164,23 +164,189 @@
    ::bg/graph {::advance {::bg/transition {::retreat ::retreat}}
                ::retreat {::bg/transition {::advance ::advance}}}})
 
+
+;; ============================================================
+;; magic perf test section
+;; this is slow to compile
+(comment
+
+
+  (defn patroller-advance [^GameObject obj _]
+    (fast-cmpt obj [tr Transform]
+      (m/faster
+        (let [targ (v3 20)
+              speed 0.1
+              diff (v3- targ (.position tr))
+              dist (.magnitude diff)]
+          (i/sets! tr
+            position (if (= (.position tr) targ)
+                       (v3+ (.position tr)
+                            (v3 speed 0 0))
+                       (v3- (.position tr)
+                            (v3* (.normalized diff)
+                                 (Mathf/Min (float speed) dist)))))
+          (when (<= (float 20) dist)
+            ;; (log "retreating!")
+            ::retreat))))))
+
+(m/defn position [^Transform tr]
+  (.position tr))
+
+(m/defn v-mag [^Vector3 v]
+  (.magnitude v))
+
+(m/defn v-normalized [^Vector3 v]
+  (.normalized v))
+
+(comment
+  (require '[arcadia.internal.tracker :as trk])
+  (trk/untrack-all)
+  (let [magic-nss '#{magic.analyzer.types
+                     magic.spells.intrinsics
+                     magic.analyzer.analyze-host-forms
+                     magic.analyzer.reflection
+                     magic.analyzer.util
+                     magic.analyzer
+                     magic.interop
+                     magic.analyzer.novel
+                     magic.core}]
+    (doseq [ns-sym magic-nss]
+      (trk/track-all (find-ns ns-sym))))
+
+  ;; after compiling patroller-advance
+  ;; (count (trk/history))
+  ;; => 2979
+
+  (def phist
+    (trk/history))
+
+  (-> (last (sort-by ::trk/interval (trk/with-intervals phist)))
+      (select-keys [::trk/var ::trk/interval ::trk/next-var]))
+
+  (apply + (map ::trk/interval (trk/with-intervals phist)))
+
+  (-> ((trk/with-intervals phist)))
+
+  (->> (take-last 5 (sort-by ::trk/interval (trk/with-intervals phist)))
+       (map #(select-keys % [::trk/var ::trk/interval ::trk/next-var]))
+       pprint)
+
+  (let [thing (last (sort-by ::trk/interval (trk/with-intervals phist)))]
+    (binding [*print-level* 14
+              *print-length* 50]
+      (pprint
+        thing)))
+
+
+  (let [hist (trk/with-intervals phist)]
+    (binding [*print-level* 14
+              *print-length* 50]
+      (pprint
+        (
+          (for [[a b] (partition 2 1 hist)
+                :when (< 12000 (::trk/interval b))]
+            a)))))
+  
+
+  (->> (trk/with-intervals phist)
+       (map ::trk/var)
+       set
+       (sort-by trk/var-symbol)
+       pprint))
+
 (defn patroller-advance [^GameObject obj _]
   (fast-cmpt obj [tr Transform]
     (m/faster
       (let [targ (v3 20)
             speed 0.1
-            diff (v3- targ (.position tr))
+            pos (position tr)
+            diff (v3- targ pos)
+            dist (v-mag diff)]
+        (i/sets! tr
+          position (if (= pos targ)
+                     (v3+ pos
+                          (v3 speed 0 0))
+                     (v3- pos
+                          (v3* (v-normalized diff) ;; the .normalized makes it really really slow
+                               (Mathf/Min (float speed) dist)))))
+        (when (<= (float 20) dist)
+          ;; (log "retreating!")
+          ::retreat)))))
+
+(comment
+  (defn patroller-advance [^GameObject obj _]
+    (fast-cmpt obj [tr Transform]
+      (m/faster
+        (let [targ (v3 20)
+              speed 0.1
+              diff (v3- targ (.position tr))
+              dist (.magnitude diff)]
+          (i/sets! tr
+            position (if (= (.position tr) targ)
+                       (v3+ (.position tr)
+                            (v3 speed 0 0))
+                       (v3- (.position tr)
+                            (v3* (v-normalized diff)
+                                 (Mathf/Min (float speed) dist)))))
+          (when (<= (float 20) dist)
+            ;; (log "retreating!")
+            ::retreat)))))
+
+
+
+  (defn patroller-advance [^GameObject obj _]
+    (fast-cmpt obj [tr Transform]
+      (let [targ (v3 20)
+            speed 0.1
+            pos (.position tr)
+            diff (v3- targ pos)
+            dist (v-mag diff)]
+        (m/faster
+          (i/sets! tr
+            position (if (= pos targ)
+                       (v3+ pos
+                            (v3 speed 0 0))
+                       (v3- pos
+                            (v3* (.normalized diff)
+                                 (Mathf/Min (float speed) dist))))))
+        (when (<= (float 20) dist)
+          ;; (log "retreating!")
+          ::retreat))))
+
+  (m/faster
+    (let [speed 0.1
+          diff (v3 3)
+          dist (.magnitude diff)]
+      (if true
+        ::hi
+        (v3* (.normalized diff)
+             (Mathf/Min  ;; (float speed)
+               dist)))))
+
+  )
+
+
+(defn patroller-advance [^GameObject obj _]
+  (fast-cmpt obj [tr Transform]
+    (m/faster
+      (let [targ (v3 20)
+            speed 0.1
+            pos (position tr)
+            diff (v3- targ pos)
             dist (.magnitude diff)]
         (i/sets! tr
-          position (if (= (.position tr) targ)
-                     (v3+ (.position tr)
+          position (if (= pos targ)
+                     (v3+ pos
                           (v3 speed 0 0))
-                     (v3- (.position tr)
+                     (v3- pos
                           (v3* (.normalized diff)
                                (Mathf/Min (float speed) dist)))))
         (when (<= (float 20) dist)
           ;; (log "retreating!")
           ::retreat)))))
+
+;; end of magic perf test section
+;; ==================================================
 
 (defn patroller-retreat [^GameObject obj _]
   (fast-cmpt obj [tr Transform]
