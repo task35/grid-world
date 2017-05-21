@@ -7,7 +7,7 @@
             [magic.api :as m]
             [arcadia.internal.map-utils :as mu]
             [arcadia.introspection :as int]
-            [timsg.unity-tools.material :as mat]
+            ;; [timsg.unity-tools.material :as mat]
             [timsg.imperative :as i]
             [task35.grid-world.try-obj :as to]
             [clojure.spec :as s]
@@ -39,12 +39,21 @@
 
 ;; ============================================================
 
+(m/defn position [^Transform tr]
+  (.position tr))
+
+(m/defn v-mag [^Vector3 v]
+  (.magnitude v))
+
+(m/defn v-normalized [^Vector3 v]
+  (.normalized v))
+
 (defn move-towards [obj1, obj2, speed]
   (with-cmpt obj1 [tr1 Transform]
     (with-cmpt obj2 [tr2 Transform]
       (;;identity
        m/faster
-        (let [diff (v3- (.position tr2) (.position tr1))]
+       (let [ diff (v3- (.position tr2) (.position tr1))]
           (set! (.position tr1)
             (v3+ (.position tr1)
                  (v3* (.normalized diff)
@@ -55,22 +64,21 @@
     (with-cmpt obj2 [tr2 Transform]
       (;;identity
        m/faster
-        (let [diff (v3- (.position tr2) (.position tr1))]
-          (if (< (.magnitude diff) 0.1)
-            (do (log "hiii")
-                (set! (.position tr1)
-                  (v3+ (.position tr1) (v3 1))))
-            (set! (.position tr1)
-              (v3- (.position tr1)
-                   (v3* (.normalized diff) speed)))))))))
+       (let [diff (v3- (.position tr2) (.position tr1))]
+         (if (< (.magnitude diff) 0.1)
+           (set! (.position tr1)
+             (v3+ (.position tr1) (v3 1)))
+           (set! (.position tr1)
+             (v3- (.position tr1)
+                  (v3* (.normalized diff) speed)))))))))
 
 ;; ============================================================
 
-(defn friend-update [obj k _]
+(defn friend-update [obj k]
   (when-let [{:keys [::friend ::speed]} (state obj k)]
     (move-towards obj friend speed)))
 
-(defn friend-awake [_ k _]
+(defn friend-awake [_ k]
   (log (str "Waking up friendship at " k "!")))
 
 (def friendship
@@ -81,12 +89,12 @@
 
 (def eu-counter (atom 0))
 
-(defn enemy-update [obj k _]
+(defn enemy-update [obj k]
   (swap! eu-counter inc)
   (when-let [{:keys [::enemy ::speed]} (state obj k)]
     (move-away-from obj enemy speed)))
 
-(defn enemy-awake [_ k _]
+(defn enemy-awake [_ k]
   (log (str "Waking up enemyship at " k "!")))
 
 (def enemyship
@@ -114,8 +122,7 @@
 
 ;; ============================================================
 
-(defn wobble-update [obj k _ ;;{:keys [::amplitude]}
-                     ]
+(defn wobble-update [obj k]
   ;;(let [{:keys [::amplitude]} (state obj k)])
   (with-cmpt obj [tr Transform]
     (;;identity
