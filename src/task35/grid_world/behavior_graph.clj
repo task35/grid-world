@@ -119,7 +119,7 @@
 ;; ============================================================
 ;; some more stuff
 
-(defn update-graph-hook [obj k _]
+(defn update-graph-hook [obj k]
   (let [{:keys [::state-machine],
          update-map ::update} (state obj k)
         f (get update-map (current-node state-machine))]
