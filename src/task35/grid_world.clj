@@ -324,7 +324,7 @@
     {::bg/update {::advance #'patroller-advance
                   ::retreat #'patroller-retreat}}))
 
-(defn loadup [obj _ _])
+(defn loadup [obj _])
 
 (sv/defgetter patrolsman
   ([]
