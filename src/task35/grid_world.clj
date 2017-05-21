@@ -7,7 +7,7 @@
             [magic.api :as m]
             [arcadia.internal.map-utils :as mu]
             [arcadia.introspection :as int]
-            [timsg.unity-tools.material :as mat]
+            ;; [timsg.unity-tools.material :as mat]
             [timsg.imperative :as i]
             [task35.grid-world.try-obj :as to]
             [clojure.spec :as s]
@@ -43,29 +43,52 @@
 (defmacro vfor [& stuff]
   `(vec (for ~@stuff)))
 
+(defn bename [^GameObject obj, name]
+  (set! (.name obj) name)
+  obj)
+
+(sv/defgetter origin-sphere
+  ([]
+   (-> (create-primitive :sphere) (bename "origin-sphere")))
+  ([origin-sphere]
+   (to/try-obj origin-sphere []
+     (with-cmpt origin-sphere [tr Transform]
+       (i/sets! tr
+         position (v3 0 0 0)
+         localScale (v3 1 5 1))))))
+
 (sv/defgetter the-floor
   ([]
    (GameObject. "the-floor"))
   ([the-floor]
-   (try
-     (dorun (map retire (children the-floor)))
-     (with-cmpt the-floor [tr Transform]
-       (i/sets! tr
-         position (v3 0)))
-     (let [tiles (vfor [x (range 40)]
-                   (vfor [z (range 40)]
-                     (let [tile (create-primitive :cube)]
-                       (set! (.name tile) (str "tile_" x "_" z))
-                       (with-cmpt tile [tr Transform]
-                         (i/sets! tr
-                           localScale (v3 1 100 1)
-                           position (v3 x -50 z)))
-                       (child+ the-floor tile)
-                       tile)))]
-       (set-state! the-floor ::tiles tiles))
-     (catch Exception e
-       (log e)))
-   the-floor))
+   (to/try-obj the-floor []
+     (let [floor-width-x 150
+           floor-width-z floor-width-x
+           tiles-x 40
+           tiles-z tiles-x
+           tile-width-x (/ floor-width-x tiles-x)
+           tile-width-z (/ floor-width-z tiles-z)
+           tile-width-y 100]
+       (dorun (map retire (children the-floor)))
+       (with-cmpt the-floor [tr Transform]
+         (i/sets! tr
+           position (v3 0)))
+       (let [tiles (vfor [x (range tiles-x)]
+                     (vfor [z (range tiles-z)]
+                       (let [tile (create-primitive :cube)]
+                         (set! (.name tile) (str "tile_" x "_" z))
+                         (with-cmpt tile [tr Transform]
+                           (i/sets! tr
+                             localScale (v3 tile-width-x tile-width-y tile-width-z)
+                             localPosition (-> (v3scale (v3 x 1 z)
+                                                        (v3 tile-width-x tile-width-y tile-width-z))
+                                               (v3+ (v3div (v3 tile-width-x tile-width-y tile-width-z)
+                                                           2))
+                                               (v3- (v3scale (v3 floor-width-x tile-width-y floor-width-z)
+                                                             (v3 0.5 2 0.5))))))
+                         (child+ the-floor tile)
+                         tile)))]
+         (set-state! the-floor ::tiles tiles))))))
 
 (defn tile-foreach [tiles f]
   (dotimes [x (count tiles)]
@@ -87,7 +110,7 @@
     (fn [tile x z] ;; gonna box anyway
       (hook+ tile hook kw
         (fn
-          ([obj _ _]
+          ([obj _] ;; doesn't work for all hooks :(
            ;;(reset! whatsit-log (cons obj args))
            (f obj x z)))))))
 
@@ -114,6 +137,12 @@
 (definline minus [x y]
   `(float (- (double ~x) (double ~y))))
 
+(definline times [x y]
+  `(float (* (double ~x) (double ~y))))
+
+(definline div [x y]
+  `(float (/ (double ~x) (double ~y))))
+
 (m/defn rtss ^System.Single []
   Time/realtimeSinceStartup)
 
@@ -123,11 +152,13 @@
       (let [t (rtss)
             pos (.position tr)]
         (i/sets! tr
-          position (v3 (.x pos)
-                       (Mathf/Cos (+ (rtss)
-                                     (.x pos)
-                                     (.z pos)))
-                       (.z pos)))))))
+          position (-> (v3 (.x pos)
+                           (times (Mathf/Cos (+ (rtss)
+                                                (div (.x pos) 10)
+                                                (div (.z pos) 10)))
+                             5)
+                           (.z pos))
+                       (v3- (v3 0 (/ (float (.. tr localScale y)) (float 2)) 0))))))))
 
 (comment
   (tile-hook+ (state (the-floor) ::tiles) :update ::tile-update #'tile-update)
@@ -166,28 +197,7 @@
 
 
 ;; ============================================================
-;; magic perf test section
-;; this is slow to compile
-(comment
-
-
-  (defn patroller-advance [^GameObject obj _]
-    (fast-cmpt obj [tr Transform]
-      (m/faster
-        (let [targ (v3 20)
-              speed 0.1
-              diff (v3- targ (.position tr))
-              dist (.magnitude diff)]
-          (i/sets! tr
-            position (if (= (.position tr) targ)
-                       (v3+ (.position tr)
-                            (v3 speed 0 0))
-                       (v3- (.position tr)
-                            (v3* (.normalized diff)
-                                 (Mathf/Min (float speed) dist)))))
-          (when (<= (float 20) dist)
-            ;; (log "retreating!")
-            ::retreat))))))
+;; patroller-advance
 
 (m/defn position [^Transform tr]
   (.position tr))
@@ -197,62 +207,6 @@
 
 (m/defn v-normalized [^Vector3 v]
   (.normalized v))
-
-(comment
-  (require '[arcadia.internal.tracker :as trk])
-  (trk/untrack-all)
-  (let [magic-nss '#{magic.analyzer.types
-                     magic.spells.intrinsics
-                     magic.analyzer.analyze-host-forms
-                     magic.analyzer.reflection
-                     magic.analyzer.util
-                     magic.analyzer
-                     magic.interop
-                     magic.analyzer.novel
-                     magic.core}]
-    (doseq [ns-sym magic-nss]
-      (trk/track-all (find-ns ns-sym))))
-
-  ;; after compiling patroller-advance
-  ;; (count (trk/history))
-  ;; => 2979
-
-  (def phist
-    (trk/history))
-
-  (-> (last (sort-by ::trk/interval (trk/with-intervals phist)))
-      (select-keys [::trk/var ::trk/interval ::trk/next-var]))
-
-  (apply + (map ::trk/interval (trk/with-intervals phist)))
-
-  (-> ((trk/with-intervals phist)))
-
-  (->> (take-last 5 (sort-by ::trk/interval (trk/with-intervals phist)))
-       (map #(select-keys % [::trk/var ::trk/interval ::trk/next-var]))
-       pprint)
-
-  (let [thing (last (sort-by ::trk/interval (trk/with-intervals phist)))]
-    (binding [*print-level* 14
-              *print-length* 50]
-      (pprint
-        thing)))
-
-
-  (let [hist (trk/with-intervals phist)]
-    (binding [*print-level* 14
-              *print-length* 50]
-      (pprint
-        (
-          (for [[a b] (partition 2 1 hist)
-                :when (< 12000 (::trk/interval b))]
-            a)))))
-  
-
-  (->> (trk/with-intervals phist)
-       (map ::trk/var)
-       set
-       (sort-by trk/var-symbol)
-       pprint))
 
 (defn patroller-advance [^GameObject obj _]
   (fast-cmpt obj [tr Transform]
@@ -273,77 +227,75 @@
           ;; (log "retreating!")
           ::retreat)))))
 
-(comment
-  (defn patroller-advance [^GameObject obj _]
-    (fast-cmpt obj [tr Transform]
-      (m/faster
-        (let [targ (v3 20)
-              speed 0.1
-              diff (v3- targ (.position tr))
-              dist (.magnitude diff)]
-          (i/sets! tr
-            position (if (= (.position tr) targ)
-                       (v3+ (.position tr)
-                            (v3 speed 0 0))
-                       (v3- (.position tr)
-                            (v3* (v-normalized diff)
-                                 (Mathf/Min (float speed) dist)))))
-          (when (<= (float 20) dist)
-            ;; (log "retreating!")
-            ::retreat)))))
+;; (comment
+;;   (defn patroller-advance [^GameObject obj _]
+;;     (fast-cmpt obj [tr Transform]
+;;       (m/faster
+;;         (let [targ (v3 20)
+;;               speed 0.1
+;;               diff (v3- targ (.position tr))
+;;               dist (.magnitude diff)]
+;;           (i/sets! tr
+;;             position (if (= (.position tr) targ)
+;;                        (v3+ (.position tr)
+;;                             (v3 speed 0 0))
+;;                        (v3- (.position tr)
+;;                             (v3* (v-normalized diff)
+;;                                  (Mathf/Min (float speed) dist)))))
+;;           (when (<= (float 20) dist)
+;;             ;; (log "retreating!")
+;;             ::retreat)))))
 
 
 
-  (defn patroller-advance [^GameObject obj _]
-    (fast-cmpt obj [tr Transform]
-      (let [targ (v3 20)
-            speed 0.1
-            pos (.position tr)
-            diff (v3- targ pos)
-            dist (v-mag diff)]
-        (m/faster
-          (i/sets! tr
-            position (if (= pos targ)
-                       (v3+ pos
-                            (v3 speed 0 0))
-                       (v3- pos
-                            (v3* (.normalized diff)
-                                 (Mathf/Min (float speed) dist))))))
-        (when (<= (float 20) dist)
-          ;; (log "retreating!")
-          ::retreat))))
+;;   (defn patroller-advance [^GameObject obj _]
+;;     (fast-cmpt obj [tr Transform]
+;;       (let [targ (v3 20)
+;;             speed 0.1
+;;             pos (.position tr)
+;;             diff (v3- targ pos)
+;;             dist (v-mag diff)]
+;;         (m/faster
+;;           (i/sets! tr
+;;             position (if (= pos targ)
+;;                        (v3+ pos
+;;                             (v3 speed 0 0))
+;;                        (v3- pos
+;;                             (v3* (.normalized diff)
+;;                                  (Mathf/Min (float speed) dist))))))
+;;         (when (<= (float 20) dist)
+;;           ;; (log "retreating!")
+;;           ::retreat))))
 
-  (m/faster
-    (let [speed 0.1
-          diff (v3 3)
-          dist (.magnitude diff)]
-      (if true
-        ::hi
-        (v3* (.normalized diff)
-             (Mathf/Min  ;; (float speed)
-               dist)))))
+;;   (m/faster
+;;     (let [speed 0.1
+;;           diff (v3 3)
+;;           dist (.magnitude diff)]
+;;       (if true
+;;         ::hi
+;;         (v3* (.normalized diff)
+;;              (Mathf/Min  ;; (float speed)
+;;                dist)))))
 
-  )
-
-
-(defn patroller-advance [^GameObject obj _]
-  (fast-cmpt obj [tr Transform]
-    (m/faster
-      (let [targ (v3 20)
-            speed 0.1
-            pos (position tr)
-            diff (v3- targ pos)
-            dist (.magnitude diff)]
-        (i/sets! tr
-          position (if (= pos targ)
-                     (v3+ pos
-                          (v3 speed 0 0))
-                     (v3- pos
-                          (v3* (.normalized diff)
-                               (Mathf/Min (float speed) dist)))))
-        (when (<= (float 20) dist)
-          ;; (log "retreating!")
-          ::retreat)))))
+;;   )
+;; (defn patroller-advance [^GameObject obj _]
+;;   (fast-cmpt obj [tr Transform]
+;;     (m/faster
+;;       (let [targ (v3 20)
+;;             speed 0.1
+;;             pos (position tr)
+;;             diff (v3- targ pos)
+;;             dist (.magnitude diff)]
+;;         (i/sets! tr
+;;           position (if (= pos targ)
+;;                      (v3+ pos
+;;                           (v3 speed 0 0))
+;;                      (v3- pos
+;;                           (v3* (.normalized diff)
+;;                                (Mathf/Min (float speed) dist)))))
+;;         (when (<= (float 20) dist)
+;;           ;; (log "retreating!")
+;;           ::retreat)))))
 
 ;; end of magic perf test section
 ;; ==================================================
@@ -360,7 +312,7 @@
                      (v3+ (.position tr)
                           (v3 speed 0 0))
                      (v3+ (.position tr)
-                          (v3* (.normalized diff)
+                          (v3* (v-normalized diff)
                                (Mathf/Min (float speed) dist)))))
         (when (<= dist (float 3))
           ;; (log "advancing!")
