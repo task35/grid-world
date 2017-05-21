@@ -47,48 +47,50 @@
   (set! (.name obj) name)
   obj)
 
-(sv/defgetter origin-sphere
-  ([]
-   (-> (create-primitive :sphere) (bename "origin-sphere")))
-  ([origin-sphere]
-   (to/try-obj origin-sphere []
-     (with-cmpt origin-sphere [tr Transform]
-       (i/sets! tr
-         position (v3 0 0 0)
-         localScale (v3 1 5 1))))))
+(comment
+  (sv/defgetter origin-sphere
+    ([]
+     (-> (create-primitive :sphere) (bename "origin-sphere")))
+    ([origin-sphere]
+     (to/try-obj origin-sphere []
+       (with-cmpt origin-sphere [tr Transform]
+         (i/sets! tr
+           position (v3 0 0 0)
+           localScale (v3 1 5 1)))))))
 
 (sv/defgetter the-floor
   ([]
    (GameObject. "the-floor"))
   ([the-floor]
    (to/try-obj the-floor []
-     (let [floor-width-x 150
-           floor-width-z floor-width-x
-           tiles-x 40
-           tiles-z tiles-x
-           tile-width-x (/ floor-width-x tiles-x)
-           tile-width-z (/ floor-width-z tiles-z)
-           tile-width-y 100]
-       (dorun (map retire (children the-floor)))
-       (with-cmpt the-floor [tr Transform]
-         (i/sets! tr
-           position (v3 0)))
-       (let [tiles (vfor [x (range tiles-x)]
-                     (vfor [z (range tiles-z)]
-                       (let [tile (create-primitive :cube)]
-                         (set! (.name tile) (str "tile_" x "_" z))
-                         (with-cmpt tile [tr Transform]
-                           (i/sets! tr
-                             localScale (v3 tile-width-x tile-width-y tile-width-z)
-                             localPosition (-> (v3scale (v3 x 1 z)
-                                                        (v3 tile-width-x tile-width-y tile-width-z))
-                                               (v3+ (v3div (v3 tile-width-x tile-width-y tile-width-z)
-                                                           2))
-                                               (v3- (v3scale (v3 floor-width-x tile-width-y floor-width-z)
-                                                             (v3 0.5 2 0.5))))))
-                         (child+ the-floor tile)
-                         tile)))]
-         (set-state! the-floor ::tiles tiles))))))
+     (comment
+       (let [floor-width-x 150
+             floor-width-z floor-width-x
+             tiles-x 40
+             tiles-z tiles-x
+             tile-width-x (/ floor-width-x tiles-x)
+             tile-width-z (/ floor-width-z tiles-z)
+             tile-width-y 100]
+         (dorun (map retire (children the-floor)))
+         (with-cmpt the-floor [tr Transform]
+           (i/sets! tr
+             position (v3 0)))
+         (let [tiles (vfor [x (range tiles-x)]
+                       (vfor [z (range tiles-z)]
+                         (let [tile (create-primitive :cube)]
+                           (set! (.name tile) (str "tile_" x "_" z))
+                           (with-cmpt tile [tr Transform]
+                             (i/sets! tr
+                               localScale (v3 tile-width-x tile-width-y tile-width-z)
+                               localPosition (-> (v3scale (v3 x 1 z)
+                                                          (v3 tile-width-x tile-width-y tile-width-z))
+                                                 (v3+ (v3div (v3 tile-width-x tile-width-y tile-width-z)
+                                                             2))
+                                                 (v3- (v3scale (v3 floor-width-x tile-width-y floor-width-z)
+                                                               (v3 0.5 2 0.5))))))
+                           (child+ the-floor tile)
+                           tile)))]
+           (set-state! the-floor ::tiles tiles)))))))
 
 (defn tile-foreach [tiles f]
   (dotimes [x (count tiles)]
@@ -108,11 +110,12 @@
 (defn tile-hook+ [tiles hook kw f]
   (tile-foreach tiles
     (fn [tile x z] ;; gonna box anyway
-      (hook+ tile hook kw
-        (fn
-          ([obj _] ;; doesn't work for all hooks :(
-           ;;(reset! whatsit-log (cons obj args))
-           (f obj x z)))))))
+      (hook+ tile hook kw f
+        ;; (fn
+        ;;   ([obj _] ;; doesn't work for all hooks :(
+        ;;    ;;(reset! whatsit-log (cons obj args))
+        ;;    (f obj x z)))
+        ))))
 
 (defn tile-hook- [tiles hook kw]
   (tile-foreach tiles
@@ -146,7 +149,7 @@
 (m/defn rtss ^System.Single []
   Time/realtimeSinceStartup)
 
-(defn tile-update [tile x z]
+(defn tile-update [tile _]
   (fast-cmpt tile [tr Transform]
     (m/faster
       (let [t (rtss)
@@ -163,6 +166,9 @@
 (comment
   (tile-hook+ (state (the-floor) ::tiles) :update ::tile-update #'tile-update)
   (tile-hook- (state (the-floor) ::tiles) :update ::tile-update)
+  
+  (tile-hook+ (state (the-floor) ::tiles) :fixed-update ::tile-update #'tile-update)
+  (tile-hook- (state (the-floor) ::tiles) :fixed-update ::tile-update)
   )
 
 (defn freeze ^GameObject [^GameObject x]
